@@ -39,6 +39,13 @@ This repository showcases the development and implementation details of our **Ma
 - **Sensor Data Handling:** Scripts to manage science sensor data publishing and subscribing via ROS.
 - **Soil Classification:** GUI-based Python tool to infer results from the trained soil classification model.
 
+## 📸 Rover Gallery  
+Here are some images of our rover in action:  
+
+<img src="gallery/IMG_6914.JPG" width="400" height="300"> <img src="gallery/IMG_6986.JPG" width="400" height="300">  
+<img src="gallery/IMG_8368.jpg" width="400" height="300"> <img src="gallery/IMG_6949.JPG" width="400" height="300">
+
+
 ## 🌟 Features
 ✅ **Six-Wheel Drive:** Optimized for various terrains, ensuring stability and mobility.  
 ✅ **6-DOF Robotic Arm:** Capable of precise object manipulation and soil sample collection.  
@@ -64,11 +71,6 @@ This repository showcases the development and implementation details of our **Ma
 - **AI-Based Decision Making:** Improve navigation and object recognition algorithms.
 - **Shifting to ROS 2:** Transitioning the entire stack to ROS 2 for better performance and modularity.
 - 
-## 📸 Rover Gallery  
-Here are some images of our rover in action:  
-
-<img src="gallery/IMG_6914.JPG" width="400" height="300"> <img src="gallery/IMG_6986.JPG" width="400" height="300">  
-<img src="gallery/IMG_8368.jpg" width="400" height="300"> <img src="gallery/IMG_6949.JPG" width="400" height="300">
 
 ## 👥 Contributors
 This project is a collaborative effort by the **[Team Inferno DTU]**, a group of passionate engineers and researchers specializing in robotics, AI, and embedded systems.
