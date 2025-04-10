@@ -1,4 +1,3 @@
-#new start
 import rospy
 import cv2
 import numpy as np
@@ -8,10 +7,10 @@ from cv_bridge import CvBridge
 from arrowFunc import *
 import serial
 import time
-
 import serial
 import serial.tools.list_ports
-BAUD_RATE=115200
+
+
 class SerialPortChecker():
     def _init_(self, baud_rate, timeout):
         self.baud_rate = baud_rate
@@ -41,21 +40,19 @@ class SerialPortChecker():
         print("No port found.")
         exit()
 
-SERIAL_PORT=SerialPortChecker(BAUD_RATE, 2).find_port("a")
+BAUD_RATE=9600
+# SERIAL_PORT=SerialPortChecker(BAUD_RATE, 2).find_port("a")
+SERIAL_PORT='/dev/ttyUSB1'
+
 speed = 1.0
-#SERIAL_PORT='/dev/ttyUSB0'
 
-
-#model = YOLO(r"/home/manik/Downloads/best2.pt")
-
-model = YOLO(r"/home/manik/Downloads/8s15epoch.pt")
-
+model = YOLO(r"/home/manik/Downloads/9s15epoch.pt")
+cone_model = YOLO(r"/home/manik/Downloads/cone2.pt")
 
 rospy.init_node('kinect_yolo_node', anonymous=True)
 pub = rospy.Publisher("/joy", Joy,queue_size=10)
 
 bridge = CvBridge()
-
 cached_results = None
 update_interval = 5
 frame_count = 0
@@ -69,25 +66,35 @@ turnin = False
 arrow_number = 1
 file = open("gps.txt","w")
 file.close()
-num_arr_frames = 0
-predictions= []
+LR_counter = [0,0]
+outer_offset = 400 # phle 300 thi 
+inner_offset = 100
+isCone = False
 
 
-def read_gps_data():
+
+def crop_yolo_bbox(image, bbox):
+    # Extract coordinates from bbox (assuming it has xyxy format)
+    if bbox:
+        x1, y1, x2, y2 = map(int, bbox.xyxy[0])  # Get coordinates in pixel format
+        cropped_image = image[y1:y2, x1:x2] # Crop the region based on pixel coordinates
+        # Optionally return both cropped image and YOLO-normalized bbox
+        return cropped_image
+    return image
+
+def read_gps_data(diff):
     try:
         with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as ser:
             while True:
                 global arrow_number
                 if ser.in_waiting > 0:
-                    line = ser.readline().decode('utf-8', errors='ignore')
-                    print(f"a\n{line}\n")
-
-                    line = line.split(',')
+                    line = ser.readline().decode('utf-8', errors='ignore').split(',')
                     gps_data = line[1:3]
                     gps_line = f"Latitude: {gps_data[0]} , Longitude: {gps_data[1]}"
                     print(gps_line)
                     file = open('gps.txt','a')
-                    file.write(f"\n################# ARROW {arrow_number} #################\n")
+                    dir = "LEFT" if diff<0 else "RIGHT"
+                    file.write(f"\n################# ARROW {arrow_number} : {dir} #################\n")
                     file.write(f"{gps_line}\n")
                     file.close()
                     arrow_number+=1
@@ -134,97 +141,96 @@ def read_imu_data():
     except Exception as e:
         print(f"Unexpected error: {e}") 
 
+import os 
 class FSM():
     def __init__(self):
         self.state="search"
         self.turned = False
+        self.search_frames = 0
         msg.axes = [0.0,0.0]
         pub.publish(msg)
-        global num_arr_frames, predictions
-        num_arr_frames =0
-        predictions = []
 
     def search(self):
         self.state = "search"
         self.turned = False
+        self.search_frames += 1
+        print(self.search_frames)
+        if(self.search_frames >20):
+            cached_results = cone_model.predict(color_frame, conf=0.3,verbose=False)
+            max_box=max_box_calculation(cached_results)
+            if max_box:
+                global isCone
+                print("manik isCone ko true kr raha hu. Ange ka dekh lio")
+                isCone = True
+            else:
+                if not isCone:
+                    self.search_frames=0    
+                
         msg.axes = [0.0,0.0]
         pub.publish(msg)
 
     def approach(self):
         self.state="approach"
-        global fn_call
         global turnin
-        outer_box_left = window_center - 400
-        outer_box_right = window_center + 400
+        outer_box_left = window_center - outer_offset
+        outer_box_right = window_center + outer_offset
         if (x_center>outer_box_right or x_center<outer_box_left) or turnin==True:
             align(outer_box_left,outer_box_right)  
         else:
             msg.axes=[0.0,speed]
             pub.publish(msg)
         self.turned = False
+        if not isCone:
+            self.search_frames = 0
 
 
-    def stop(self,max_box):
+
+    def stop(self):
         self.state="stop"
-        #msg.axes = [0.0,0.0]
-        #pub.publish(msg)
-        print("STOPPING FOR 10s")
-        
-        
+        msg.axes = [0.0,0.0]
+        pub.publish(msg)
+       
+        global LR_counter
+        should_rotate = True
+        if(not self.turned ):
+            print("STOPPING FOR 10s")
+            read_gps_data(LR_counter[0] - LR_counter[1])
+            wait()
+            print(LR_counter)
 
-        global color_frame, num_arr_frames, predictions
+            if LR_counter[0] - LR_counter[1]>0:
+                print("LEFT")
+                msg.axes = [speed,0.0]
+            elif LR_counter[1] - LR_counter[0]>0:
+                print("RIGHT")
+                msg.axes = [-speed,0.0]
+            elif LR_counter[1]==LR_counter[0]:
+                print('''Sab moh maya hai, kcuh bhi ho skta h, 
+                      humne apne hath khade krdie h, 
+                      ROVER AB BHAGWAN BHAROSE CHLEGA!
+                      MOVE BASE krlena chahie tha....
+                      Sorry VIGNESH''')
+                msg.axes = [0.0,-speed]
+                should_rotate=False    
 
-        if(num_arr_frames >= 5):
-            left,right=0,0
-            for val in predictions:
-                if(val == 1):
-                    right+=1
-                if(val == 0):
-                    left+=1
-            print(predictions)
-            num_arr_frames = 0
-            predictions = []
-
-            if(not self.turned ):
-                wait()
-                read_gps_data()
-
-                if left>right:
-                    print("LEFT")
-                    msg.axes = [speed,0.0]
-                elif right>left:
-                    print("RIGHT")
-                    msg.axes = [-speed,0.0]
-
-                pub.publish(msg)
+            pub.publish(msg)
+            if should_rotate:
                 read_imu_data()
                 self.turned = True
                 msg.axes = [0.0,0.0]
                 pub.publish(msg)
-
-        elif(num_arr_frames < 5):
-            cropped_img=crop_yolo_bbox(color_frame,max_box)
-            cv2.imshow("cropped", cropped_img)
-            direction = arrow_detect(img=cropped_img)
-            if direction != None:
-                predictions.append(direction)
-                num_arr_frames+=1
-        print(f"{num_arr_frames} NUMBER")
-            # else:
-            #     print("unable to tell dir")
-            # num_arr_frames+=1
-        
+            else:
+                time.sleep(3)  #Let rover go back a bit to get clear view of arrow for inference
+            LR_counter = [0,0]
         
 
 
-
-
-            
     def get_state(self):
         return self.state
     
     def state_selector(self,found,depth_value,area,max_box):
         distance=1500
+        
         if (depth_value==None) and found:
             self.approach()
         elif depth_value == None and not found:
@@ -233,36 +239,18 @@ class FSM():
             self.approach()
         elif area and depth_value <= distance:
             if area >=color_frame.shape[1]*color_frame.shape[0]*0.03:
-                self.stop(max_box)
+                print("turn wala stoping....")
+                self.stop()
+       
 
-
-
-def crop_yolo_bbox(image, bbox):
-    # Extract coordinates from bbox (assuming it has xyxy format)
-    if bbox:
-        x1, y1, x2, y2 = map(int, bbox.xyxy[0])  # Get coordinates in pixel format
-
-        # # Compute YOLO format (normalized to image dimensions)
-        # image_height, image_width = image.shape[:2]
-        # x_center = ((x1 + x2) / 2) / image_width
-        # y_center = ((y1 + y2) / 2) / image_height
-        # box_width = (x2 - x1) / image_width
-        # box_height = (y2 - y1) / image_height
-
-        # Crop the region based on pixel coordinates
-        cropped_image = image[y1:y2, x1:x2]
-
-        # Optionally return both cropped image and YOLO-normalized bbox
-        return cropped_image
-    return image
-
+        
 
 def depth_callback(msg):
     global depth_frame
-    depth_frame = bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
-    depth_frame = np.array(depth_frame, dtype=np.uint16)  # Ensure depth data is in the correct format
+    depth_frame = bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough') 
+    depth_frame = np.array(depth_frame, dtype=np.uint16)  # Ensure depth data is in the correct format  
 
-def depth_calculation(color_frame,x1,y1,x2,y2):
+def depth_calculation(color_frame,x1,y1,x2,y2): 
     color_to_depth_x = depth_frame.shape[1] / color_frame.shape[1]
     color_to_depth_y = depth_frame.shape[0] / color_frame.shape[0]
 
@@ -274,12 +262,11 @@ def depth_calculation(color_frame,x1,y1,x2,y2):
     if 0 <= depth_x < depth_frame.shape[1] and 0 <= depth_y < depth_frame.shape[0]:
         depth_value = depth_frame[depth_y, depth_x]
     if depth_value :
-        # print(f"depth=>{depth_value}")
         return depth_value
     else:
         return None
 
-def max_box_calculation(): 
+def max_box_calculation(cached_results):
     max_box=None
     maximum = -1
     for result in cached_results:
@@ -314,18 +301,22 @@ def color_callback(msg):
     depth_value=None
     max_box = None
     found=None
-
     width,height,area=None,None,None
     global color_frame
     color_frame = bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
     global window_center
     window_center = color_frame.shape[1]//2
     if frame_count % update_interval == 0: # prediction harr update interval ke baad hi hoga (to skip frams)
-        cached_results = model.predict(color_frame, conf=0.6,verbose=False)
+        if  isCone :
+            cached_results = cone_model.predict(color_frame, conf=0.3,verbose=False)
+        else:    
+            cached_results = model.predict(color_frame, conf=0.3,verbose=False)
+        
+    
 
     if cached_results:
 
-        max_box=max_box_calculation()
+        max_box=max_box_calculation(cached_results)
         
         if max_box:
             found=True
@@ -338,34 +329,39 @@ def color_callback(msg):
             height = y_max - y_min
             area=height*width
 
+            if frame_count % update_interval == 0 and depth_value:
+                #AMAN ki bakchodi (vote according to prediction value)
+                global LR_counter
+                dir = arrow_detect(color_frame)
+                if(dir!=None):
+                    LR_counter[dir]+=1
+
             # Ensure width and height are positive
             if width < 0 or height < 0:
                 raise ValueError("Invalid bounding box coordinates!")
 
-    cv2.line(color_frame,(window_center - 400, 0),(window_center - 400, color_frame.shape[0]),(255,0,0),2)
-    cv2.line(color_frame,(window_center + 400, 0),(window_center + 400, color_frame.shape[0]),(255,0,0),2)
+    #cv2.line(color_frame,(window_center - outer_offset, 0),(window_center - outer_offset, color_frame.shape[0]),(255,0,0),2)
+    #cv2.line(color_frame,(window_center + outer_offset, 0),(window_center + outer_offset, color_frame.shape[0]),(255,0,0),2)
 
 
-    cv2.line(color_frame,(window_center - 100, 0),(window_center - 100, color_frame.shape[0]),(0,255,0),2)
-    cv2.line(color_frame,(window_center + 100, 0),(window_center + 100, color_frame.shape[0]),(0,255,0),2)
+    #cv2.line(color_frame,(window_center - inner_offset, 0),(window_center - inner_offset, color_frame.shape[0]),(0,255,0),2)
+    #cv2.line(color_frame,(window_center + inner_offset, 0),(window_center + inner_offset, color_frame.shape[0]),(0,255,0),2)
     frame_count += 1
     elapsed_time = time.time() - start_time
     if elapsed_time > 0:
         fps = frame_count / elapsed_time
     else:
         fps = 0
-    cv2.putText(color_frame, f"FPS: {fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    #cv2.putText(color_frame, f"FPS: {fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2) 
 
     robot.state_selector(found,depth_value,area,max_box)
 
     color_frame_small = cv2.resize(color_frame, (960, 540), interpolation=cv2.INTER_NEAREST)
-    cv2.imshow('YOLO Kinect Stream', color_frame_small)
-
+    #cv2.imshow('YOLO Kinect Stream', color_frame_small)
     
 
-    print(f"depth=>{depth_value} : found=>{found} : state=>{robot.get_state()} : turn_in=>{turnin}")
+    print(f"depth=>{depth_value} : found=>{found} : isCone={isCone} : state=>{robot.get_state()} : LR_counter=>{LR_counter} : area : {area} ")
 
-    # frame_count += 1
   
     if (cv2.waitKey(1) & 0xFF) == ord('q'):
         rospy.signal_shutdown('User Exit')
@@ -377,19 +373,15 @@ def wait():
     for i in range(sec):
         print(f'{sec-i} seconds left')
         time.sleep(1)
-align_check=False
-align_check_inner=False
-fn_call=False
 
 def align(outer_box_left, outer_box_right):
-    global align_check,align_check_inner
     global turnin
     diff = x_center - window_center
     turn_dir = -1 if diff>0 else 1
     msg.axes = [turn_dir*speed,0.0]
     pub.publish(msg)
     print("archit bahar")
-    if (x_center>outer_box_left+200 and x_center <outer_box_right-200):
+    if (x_center>outer_box_left+inner_offset and x_center <outer_box_right-inner_offset):
         turnin=False
         print("archit if ")
         msg.axes = [0.0,0.0]
@@ -398,15 +390,9 @@ def align(outer_box_left, outer_box_right):
         turnin = True
         print("archit else")
 
-    
-
-
-        
-
-    
-
 
 rospy.Subscriber('/kinect2/hd/image_color', Image, color_callback)
 rospy.Subscriber('/kinect2/sd/image_depth', Image, depth_callback)
 robot = FSM()
 rospy.spin()
+
