@@ -367,7 +367,7 @@ def color_callback(msg):
 
     # frame_count += 1
   
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    if (cv2.waitKey(1) & 0xFF) == ord('q'):
         rospy.signal_shutdown('User Exit')
         cv2.destroyAllWindows()
 
