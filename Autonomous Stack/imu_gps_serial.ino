@@ -1,3 +1,10 @@
+// IMU-> SPI , GPS-> UART
+//senser_data[3] 
+  //0->gz = angular velcoity  , 1-> lat, 2->long
+// So  after calculating data, i am sending the data form uC to 
+// computer with UART i.e. serial monitor in a specific format 
+
+
 #include <TinyGPS++.h> // GPS
 #include <Wire.h>    // IMU
 #include <I2Cdev.h>
@@ -54,6 +61,7 @@ void loop() {
 }
 
 void readIMUData() {
+  //angular velocity = raw value of gyro /sensitivty 
   int16_t gx, gy, gz;
   mpu.getRotation(&gx, &gy, &gz);
   float sensitivity = 131.0;
