@@ -1,3 +1,14 @@
+//problem was-> there were mutliple serial ports connected , so to read data from a particular port
+// we need to know the port number , so the workarond was 
+// We are sending a code continously in serial from each serial connection ,ex- For gps port ,Auto was the keyword
+// 1) listing all usb ports 
+// 2) Connecting each one by one , read
+// 3) returning port where that keyword is present 
+
+// data recieved is in reverese order
+// disp in degree = ang velocity * time
+
+  
 import serial
 import time
 import serial.tools.list_ports
