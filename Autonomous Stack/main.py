@@ -160,7 +160,6 @@ class FSM():
             max_box=max_box_calculation(cached_results)
             if max_box:
                 global isCone
-                print("manik isCone ko true kr raha hu. Ange ka dekh lio")
                 isCone = True
             else:
                 if not isCone:
@@ -330,7 +329,7 @@ def color_callback(msg):
             area=height*width
 
             if frame_count % update_interval == 0 and depth_value:
-                #AMAN ki bakchodi (vote according to prediction value)
+                
                 global LR_counter
                 dir = arrow_detect(color_frame)
                 if(dir!=None):
@@ -380,15 +379,12 @@ def align(outer_box_left, outer_box_right):
     turn_dir = -1 if diff>0 else 1
     msg.axes = [turn_dir*speed,0.0]
     pub.publish(msg)
-    print("archit bahar")
     if (x_center>outer_box_left+inner_offset and x_center <outer_box_right-inner_offset):
         turnin=False
-        print("archit if ")
         msg.axes = [0.0,0.0]
         pub.publish(msg)
     else:
         turnin = True
-        print("archit else")
 
 
 rospy.Subscriber('/kinect2/hd/image_color', Image, color_callback)
